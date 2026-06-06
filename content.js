@@ -1,84 +1,49 @@
-let isExplicitPlayTriggered = false;
+console.log("[Extension] 유튜브 감시 및 CSS content 마스킹 스크립트 로드 완료");
 
-const setupStrictYoutubeBlocker = () => {
-  const video = document.querySelector('video');
-  const playButton = document.querySelector('.ytp-play-button');
-
-  if (video && !video.dataset.perfectHooked) {
-    video.dataset.perfectHooked = "true";
-
-    // 1. 유튜브 내부의 play() 호출을 원천 차단하고 0초에 묶어둠
-    const originalPlay = video.play;
-    video.play = function() {
-      // 사용자가 직접 '재생 버튼'을 누르거나, 스페이스바/K키를 누른 경우만 실행 허용
-      if (isExplicitPlayTriggered || (window.event && (window.event.type === 'click' || window.event.key === ' ' || window.event.key === 'k'))) {
-        isExplicitPlayTriggered = false; // 플래그 리셋
-        return originalPlay.apply(this, arguments);
-      } else {
-        // 탭 전환 등 유튜브의 자체 자동 재생 시도는 무조건 일시정지하고 0초로 강제 고정
-        video.pause();
-        video.currentTime = 0;
-        return Promise.resolve(); // 스크립트 에러 방지
-      }
-    };
-
-    // 2. 탭이 전환되면서 유튜브가 버퍼를 밀어내며 썸네일을 넘어가는 현상 방지
-    const lockToThumbnail = (e) => {
-      if (!isExplicitPlayTriggered) {
-        video.pause();
-        // 이미 영상이 앞으로 넘어가 버렸다면 강제로 0초(첫 썸네일)로 되돌림
-        if (video.currentTime > 0) {
-          video.currentTime = 0;
-        }
-      }
-    };
-
-    // 영상이 켜지거나, 버퍼가 차오르거나, 시간이 움직이려고 할 때 0초로 멱살 잡기
-    ['play', 'playing', 'timeupdate', 'progress', 'canplay'].forEach(eventType => {
-      video.addEventListener(eventType, lockToThumbnail, true);
-    });
-
-    // 최초 로드 시점에 이미 흘러가고 있다면 즉시 컷
-    if (!video.paused) {
-      video.pause();
-      video.currentTime = 0;
-    }
-  }
-
-  // 3. 하단 컨트롤 바의 '진짜 재생 버튼' 클릭 감지
-  if (playButton && !playButton.dataset.hooked) {
-    playButton.dataset.hooked = "true";
-    playButton.addEventListener('click', () => {
-      isExplicitPlayTriggered = true;
-    }, true);
-  }
-
-  // 4. 영상 화면 중앙 클릭을 통한 재생 감시
-  const playerContainer = document.querySelector('.html5-video-player');
-  if (playerContainer && !playerContainer.dataset.clickHooked) {
-    playerContainer.dataset.clickHooked = "true";
-    playerContainer.addEventListener('click', (e) => {
-      // 하단 자막이나 설정 바를 누른 게 아니라 순수 영상 화면을 눌렀을 때만 재생 허용
-      if (!e.target.closest('.ytp-chrome-bottom')) {
-        isExplicitPlayTriggered = true;
-      }
-    }, true);
-  }
-};
-
-// 유튜브 내부 페이지 이동(SPA) 및 동적 로딩 상시 감시
-const globalObserver = new MutationObserver(() => {
-  if (window.location.href.includes('watch')) {
-    setupStrictYoutubeBlocker();
-  }
-});
-
-globalObserver.observe(document.documentElement, {
-  childList: true,
-  subtree: true
-});
-
-// 진입 즉시 실행
-if (window.location.href.includes('watch')) {
-  setupStrictYoutubeBlocker();
+function getYouTubeVideoId() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('v');
 }
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "CHECK_AND_PAUSE") {
+    console.log("[Extension] 탭 최초 활성화 감지. CSS 영상 교체 마스킹을 시작합니다.");
+    
+    let attempts = 0;
+    const videoId = getYouTubeVideoId();
+    
+    const checkInterval = setInterval(() => {
+      const video = document.querySelector('video');
+      
+      if (video && videoId) {
+        // 1. 유튜브 엔진이 재생을 시도할 때마다 계속 일시정지
+        if (!video.paused && !video.ended) {
+          video.pause();
+        }
+        
+        // 2. [핵심 변경] 비디오를 투명하게 하거나 크기를 줄이는 대신, 
+        // 비디오 화면 자체를 썸네일 이미지로 강제로 '대체(Replace)'합니다.
+        // 이 방식을 쓰면 뒤쪽의 흰색 레이어가 드러날 기회조차 주어지지 않습니다.
+        const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        video.style.setProperty('content', `url(${thumbnailUrl})`, 'important');
+        video.style.setProperty('object-fit', 'cover', 'important'); // 썸네일 비율 유지
+        
+        // 3. 재생이 감지되면(사용자가 재생을 누르면) 썸네일 마스크를 제거하고 영상을 정상 노출합니다.
+        const restoreVideo = () => {
+          video.style.removeProperty('content');
+          video.style.removeProperty('object-fit');
+          console.log("[Extension] 영상 재생 감지 -> CSS 마스크 제거 및 영상 복구 완료");
+        };
+        
+        // 유튜브 순정 재생 버튼 클릭, 화면 클릭, 스페이스바 등 모든 재생 신호에 반응
+        video.addEventListener('play', restoreVideo, { once: true });
+      }
+      
+      attempts++;
+      // 1.5초 동안 초기 로딩 타이밍을 붙잡아둔 뒤 종료
+      if (attempts > 50) {
+        clearInterval(checkInterval);
+      }
+    }, 30);
+  }
+});

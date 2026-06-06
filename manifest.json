@@ -1,11 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "유튜브 탭 전환 자동재생 방지",
-  "version": "1.0",
-  "description": "새 탭으로 열린 유튜브가 탭 전환 시 자동으로 재생되는 것을 막습니다.",
+  "name": "YouTube Pause on Switch",
+  "version": "2.0",
+  "description": "새 탭으로 연 유튜브를 처음 클릭해 들어갔을 때 자동 재생을 막아줍니다.",
+  "permissions": [
+    "tabs",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/watch*"],
+      "matches": ["https://www.youtube.com/*"],
       "js": ["content.js"],
       "run_at": "document_start"
     }
