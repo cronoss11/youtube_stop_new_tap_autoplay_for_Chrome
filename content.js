@@ -34,16 +34,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           cachedVideoId = videoId;
           console.log("[Extension] [네트워크 통신] 썸네일 이미지를 가져와 메모리에 캐싱했습니다.");
         }
-
+        
+        let isLoopEnded = false;
         // 사용자가 직접 재생 버튼을 누르면 마스크를 완벽히 제거하는 리스너
         const restoreVideo = () => {
-          video.style.removeProperty('content');
-          video.style.removeProperty('object-fit');
-          cachedImage = null;
-          cachedVideoId = "";
-          console.log("[Extension] 영상 재생 감지 -> CSS 마스크 영구 제거 및 루프 완전 종료");
+            video.style.removeProperty('content');
+            video.style.removeProperty('object-fit');
+            cachedImage = null;
+            cachedVideoId = "";
+            console.log("[Extension] 영상 재생 감지 -> CSS 마스크 영구 제거 및 루프 완전 종료");
         };
-        video.addEventListener('play', restoreVideo, { once: true });
 
         // [2] 30ms 주기적 실행: 유튜브 엔진을 정지시키고 캐시된 썸네일을 강제로 무한 유지
         let watchAttempts = 0;
@@ -65,7 +65,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // 1.5초(50회) 동안 지켜본 뒤 유튜브 엔진이 완전히 포기하면 루프 종료
           if (watchAttempts > 50) {
             console.log("[Extension] 초기 안정기 진입으로 감시 루프 종료 (썸네일은 화면에 캐시된 채 유지됨)");
+            video.addEventListener('play', restoreVideo, { once: true });
             clearInterval(checkInterval);
+            isLoopEnded = true;
           }
         }, 30);
 
