@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Pause on Switch",
+  "name": "Youtube Stop new tab autoplay for Chrome",
   "version": "2.0",
   "description": "새 탭으로 연 유튜브를 처음 클릭해 들어갔을 때 자동 재생을 막아줍니다.",
   "permissions": [
